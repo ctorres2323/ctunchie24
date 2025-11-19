@@ -1,22 +1,36 @@
 // api/wodify/workout.js
 // Clean NBHD → Wodify proxy that returns a simple, structured workout object.
+// With CORS enabled so Shopify storefront JS can call it.
 
 export default async function handler(req, res) {
+  const LOCATION = "Neighborhood Gym";
+  const PROGRAM = "NBHD METCON";
+
+  // Basic CORS for GET/OPTIONS
+  const setCors = () => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  };
+
+  if (req.method === "OPTIONS") {
+    setCors();
+    return res.status(200).end();
+  }
+
   try {
     const apiKey = process.env.WODIFY_API_KEY;
     if (!apiKey) {
+      setCors();
       return res.status(500).json({ error: "Missing Wodify API key" });
     }
-
-    const LOCATION = "Neighborhood Gym";
-    const PROGRAM = "NBHD METCON";
 
     // Build today as YYYY-MM-DD (Wodify format)
     const today = new Date();
     const date = [
       today.getFullYear(),
       String(today.getMonth() + 1).padStart(2, "0"),
-      String(today.getDate()).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
     ].join("-");
 
     const url = `https://api.wodify.com/v1/workouts/formattedworkout?date=${encodeURIComponent(
@@ -28,8 +42,8 @@ export default async function handler(req, res) {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "x-api-key": apiKey,
-      },
+        "x-api-key": apiKey
+      }
     });
 
     const rawText = await response.text();
@@ -38,18 +52,20 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(rawText);
     } catch (e) {
+      setCors();
       return res.status(500).json({
         error: "Wodify did not return JSON",
-        preview: rawText.slice(0, 400),
+        preview: rawText.slice(0, 400)
       });
     }
 
     const apiWod = parsed.APIWod || parsed;
 
     if (!apiWod || typeof apiWod !== "object") {
+      setCors();
       return res.status(500).json({
         error: "Unexpected Wodify shape",
-        preview: JSON.stringify(parsed).slice(0, 400),
+        preview: JSON.stringify(parsed).slice(0, 400)
       });
     }
 
@@ -89,7 +105,7 @@ export default async function handler(req, res) {
         name: name || null,
         rep_scheme: repScheme || null,
         html: desc || "",
-        text: stripHtml(desc || ""),
+        text: stripHtml(desc || "")
       };
 
       sections.push(entry);
@@ -100,9 +116,7 @@ export default async function handler(req, res) {
       }
     });
 
-    // Try to pick out strength / metcon / accessory from sections
-    const findFirst = (matcher) =>
-      sections.find((s) => matcher(s)) || null;
+    const findFirst = (matcher) => sections.find(matcher) || null;
 
     const strength = findFirst(
       (s) =>
@@ -122,8 +136,7 @@ export default async function handler(req, res) {
       (s) =>
         s !== strength &&
         s !== metcon &&
-        (/access/i.test(s.section || "") ||
-          /access/i.test(s.name || ""))
+        (/access/i.test(s.section || "") || /access/i.test(s.name || ""))
     );
 
     const result = {
@@ -131,27 +144,25 @@ export default async function handler(req, res) {
       location: LOCATION,
       program: PROGRAM,
       title: header.Name || null,
-
       strength: strength,
       metcon: metcon,
       accessories: accessories,
-
       coach_notes: coachNotes
         ? {
             html: coachNotes,
-            text: stripHtml(coachNotes),
+            text: stripHtml(coachNotes)
           }
         : null,
-
-      // Optional: full formatted HTML straight from Wodify if you ever want to render it
-      formatted_html: formattedHtml || null,
+      formatted_html: formattedHtml || null
     };
 
+    setCors();
     return res.status(200).json(result);
   } catch (e) {
+    setCors();
     return res.status(500).json({
       error: "Proxy error",
-      details: e.message || String(e),
+      details: e.message || String(e)
     });
   }
 }
