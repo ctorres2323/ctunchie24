@@ -17,45 +17,34 @@ export default async function handler(req, res) {
     // ==================================================
     // 2. CONFIGURATION
     // ==================================================
-    
     const WODIFY_API_KEY = 'b7TZjvVAv78lKNS9mKzmH4mZ2cAOhHAranrLCNxS'; 
     
-    // We try the standard name first. 
-    // If this still fails, we will try "Neighborhood Gym OC" next.
-    const LOCATION_NAME = 'Neighborhood Gym'; 
-
-    // ==================================================
-    // 3. DATE HANDLING (FORCE CALIFORNIA TIME)
-    // ==================================================
-    // This fixes the "404" error caused by the server thinking it's tomorrow
+    // DATE FIX: Force Los Angeles Time
     const date = new Date().toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
     });
-    
-    // Convert MM/DD/YYYY to YYYY-MM-DD
     const [month, day, year] = date.split('/');
     const dateStr = `${year}-${month}-${day}`;
 
     // ==================================================
-    // 4. FETCH FROM WODIFY
+    // 3. FETCH FROM WODIFY (NO LOCATION FILTER)
     // ==================================================
-    const encodedLocation = encodeURIComponent(LOCATION_NAME);
-    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${dateStr}&location=${encodedLocation}&type=json`;
+    // We removed "&location=..." to prevent 404 errors on naming mismatches
+    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${dateStr}&type=json`;
     
     const response = await fetch(wodifyUrl);
     
     if (!response.ok) {
-      // Detailed error to help us debug if "Neighborhood Gym" is the wrong name
-      throw new Error(`Wodify 404. Tried fetching for date: ${dateStr} at Location: ${LOCATION_NAME}`);
+      throw new Error(`Wodify Error ${response.status}. URL tried: ${wodifyUrl}`);
     }
 
     const rawData = await response.json();
 
     // ==================================================
-    // 5. PARSE DATA
+    // 4. PARSE DATA
     // ==================================================
     const wodList = rawData.RecordList?.APIWod;
     
@@ -63,13 +52,14 @@ export default async function handler(req, res) {
       return res.status(200).json({
         status: "rest_day",
         date: dateStr,
-        program: "Rest Day",
+        program: "Rest Day / No WOD Found",
         strength: { name: "Recovery", text: "No programmed workout found for today." },
         metcon: { name: "Active Recovery", text: "Go for a run or mobilize." },
         coach_notes: { text: "Check the Wodify app for full schedule." }
       });
     }
 
+    // We take the first program returned (usually the main WOD)
     const mainWod = wodList[0]; 
     const components = mainWod.Components?.Component || [];
     const strengthComp = components[0] || {};
