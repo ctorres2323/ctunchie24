@@ -1,4 +1,5 @@
 // api/wodify/workout.js
+// TEMP DEBUG VERSION – just show us what Wodify is sending.
 
 export default async function handler(req, res) {
   try {
@@ -7,11 +8,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing Wodify API key" });
     }
 
-    // Exact names from your Wodify account
     const LOCATION = "Neighborhood Gym";
     const PROGRAM = "NBHD METCON";
 
-    // Build today as YYYY-MM-DD (Wodify format)
     const today = new Date();
     const date = [
       today.getFullYear(),
@@ -34,10 +33,9 @@ export default async function handler(req, res) {
 
     const raw = await response.text();
 
-    // Try to parse JSON from Wodify
-    let wod;
+    let parsed;
     try {
-      wod = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch (e) {
       return res.status(500).json({
         error: "Wodify did not return JSON",
@@ -45,79 +43,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Normalize into a single "workout" object
-    // Wodify often returns { data: [ { ...workout... } ] }
-    // ─────────────────────────────────────────────────────────────
-    const root = wod.data ?? wod;
-    const list = Array.isArray(root) ? root : [root];
-    const wodObj = list[0] || {};
-
-    const components = Array.isArray(wodObj.Components)
-      ? wodObj.Components
-      : [];
-
-    const stripHtml = (html = "") =>
-      html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-
-    // Try to find logical sections
-    const strengthComp =
-      components.find(
-        (c) =>
-          c.ComponentTypeName === "Weightlifting" ||
-          /strength/i.test(c.Name || "")
-      ) || null;
-
-    const metconComp =
-      components.find(
-        (c) =>
-          c.ComponentTypeName === "Metcon" &&
-          !(strengthComp && c === strengthComp)
-      ) || null;
-
-    const extras = components.filter(
-      (c) => c !== strengthComp && c !== metconComp
-    );
-
-    const coachNotes =
-      typeof wodObj.CoachNotes === "string" &&
-      wodObj.CoachNotes.trim().length
-        ? wodObj.CoachNotes.trim()
-        : null;
-
-    const result = {
+    // For now, just return what Wodify gave us so we can inspect it
+    return res.status(200).json({
       date,
       location: LOCATION,
       program: PROGRAM,
-      title: wodObj.Name || null,
-
-      strength: strengthComp
-        ? {
-            name: strengthComp.Name || "Strength",
-            html: strengthComp.Description || "",
-            text: stripHtml(strengthComp.Description || ""),
-          }
-        : null,
-
-      metcon: metconComp
-        ? {
-            name: metconComp.Name || "Metcon",
-            html: metconComp.Description || "",
-            text: stripHtml(metconComp.Description || ""),
-          }
-        : null,
-
-      extras: extras.map((c) => ({
-        type: c.ComponentTypeName || null,
-        name: c.Name || null,
-        html: c.Description || "",
-        text: stripHtml(c.Description || ""),
-      })),
-
-      coach_notes: coachNotes,
-    };
-
-    return res.status(200).json(result);
+      raw: parsed
+    });
   } catch (e) {
     return res.status(500).json({
       error: "Proxy error",
