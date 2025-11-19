@@ -1,168 +1,56 @@
-// api/wodify/workout.js
-// Clean NBHD → Wodify proxy that returns a simple, structured workout object.
-// With CORS enabled so Shopify storefront JS can call it.
-
 export default async function handler(req, res) {
-  const LOCATION = "Neighborhood Gym";
-  const PROGRAM = "NBHD METCON";
+  // 1. ALLOW CORS (Crucial for Shopify to read this)
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any domain (including your Shopify site)
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
-  // Basic CORS for GET/OPTIONS
-  const setCors = () => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  };
-
-  if (req.method === "OPTIONS") {
-    setCors();
-    return res.status(200).end();
+  // Handle standard OPTIONS request (Pre-flight check)
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
   }
 
+  // 2. DEFINE YOUR WODIFY API DETAILS
+  // (Replace these with your actual Wodify API Key if you have one, 
+  // otherwise we can return mock data to test the connection first)
+  
   try {
-    const apiKey = process.env.WODIFY_API_KEY;
-    if (!apiKey) {
-      setCors();
-      return res.status(500).json({ error: "Missing Wodify API key" });
-    }
+    // --- OPTION A: If you have the Wodify API Key ---
+    /*
+    const WODIFY_API_KEY = 'YOUR_API_KEY_HERE'; 
+    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const response = await fetch(`https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${date}&type=json`);
+    const data = await response.json();
+    */
 
-    // Build today as YYYY-MM-DD (Wodify format)
-    const today = new Date();
-    const date = [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, "0"),
-      String(today.getDate()).padStart(2, "0")
-    ].join("-");
-
-    const url = `https://api.wodify.com/v1/workouts/formattedworkout?date=${encodeURIComponent(
-      date
-    )}&location=${encodeURIComponent(LOCATION)}&program=${encodeURIComponent(
-      PROGRAM
-    )}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "x-api-key": apiKey
+    // --- OPTION B: MOCK DATA (Use this to test if the connection works first) ---
+    const data = {
+      status: "success",
+      date: new Date().toLocaleDateString(),
+      program: "NBHD Performance",
+      strength: {
+        name: "Back Squat",
+        rep_scheme: "5-5-5-5-5",
+        text: "Build to a heavy set of 5. Rest 2:00 between sets."
+      },
+      metcon: {
+        name: "The Grinder",
+        text: "AMRAP 12:\n12 Box Jumps (24/20)\n10 Deadlifts (225/155)\n8 Handstand Push-ups"
+      },
+      coach_notes: {
+        text: "Focus on form over speed today. Break the deadlifts early."
       }
-    });
-
-    const rawText = await response.text();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch (e) {
-      setCors();
-      return res.status(500).json({
-        error: "Wodify did not return JSON",
-        preview: rawText.slice(0, 400)
-      });
-    }
-
-    const apiWod = parsed.APIWod || parsed;
-
-    if (!apiWod || typeof apiWod !== "object") {
-      setCors();
-      return res.status(500).json({
-        error: "Unexpected Wodify shape",
-        preview: JSON.stringify(parsed).slice(0, 400)
-      });
-    }
-
-    const header = apiWod.WodHeader || {};
-    const formattedHtml = apiWod.FormattedWOD || "";
-    const compsRaw = Array.isArray(apiWod.Components) ? apiWod.Components : [];
-
-    // Flatten components (each entry has a .Component object)
-    const flatComponents = compsRaw.map((c) => c.Component || c);
-
-    const stripHtml = (html = "") =>
-      html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-
-    // Walk components in order: track current "section" (Strength / Metcon / Accessory)
-    let currentSection = null;
-    const sections = [];
-    let coachNotes = null;
-
-    flatComponents.forEach((comp) => {
-      const type = comp.ComponentTypeName || "";
-      const name = (comp.Name || "").trim();
-      const desc = comp.Description || "";
-      const repScheme = comp.RepScheme || "";
-      const comments = comp.Comments || "";
-
-      // Section markers (Strength / Metcon / Accessory)
-      if (type === "Section") {
-        currentSection = name || currentSection;
-        return;
-      }
-
-      const sectionLabel = currentSection || type || null;
-
-      const entry = {
-        section: sectionLabel,
-        type: type || null,
-        name: name || null,
-        rep_scheme: repScheme || null,
-        html: desc || "",
-        text: stripHtml(desc || "")
-      };
-
-      sections.push(entry);
-
-      // Use first non-empty comments as coach notes if we don't already have one
-      if (!coachNotes && comments && comments.trim().length) {
-        coachNotes = comments;
-      }
-    });
-
-    const findFirst = (matcher) => sections.find(matcher) || null;
-
-    const strength = findFirst(
-      (s) =>
-        /strength/i.test(s.section || "") ||
-        /strength/i.test(s.name || "") ||
-        s.type === "Weightlifting"
-    );
-
-    const metcon = findFirst(
-      (s) =>
-        /metcon/i.test(s.section || "") ||
-        /metcon/i.test(s.name || "") ||
-        s.type === "Metcon"
-    );
-
-    const accessories = sections.filter(
-      (s) =>
-        s !== strength &&
-        s !== metcon &&
-        (/access/i.test(s.section || "") || /access/i.test(s.name || ""))
-    );
-
-    const result = {
-      date,
-      location: LOCATION,
-      program: PROGRAM,
-      title: header.Name || null,
-      strength: strength,
-      metcon: metcon,
-      accessories: accessories,
-      coach_notes: coachNotes
-        ? {
-            html: coachNotes,
-            text: stripHtml(coachNotes)
-          }
-        : null,
-      formatted_html: formattedHtml || null
     };
 
-    setCors();
-    return res.status(200).json(result);
-  } catch (e) {
-    setCors();
-    return res.status(500).json({
-      error: "Proxy error",
-      details: e.message || String(e)
-    });
+    // 3. RETURN THE DATA
+    res.status(200).json(data);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch workout', details: error.message });
   }
 }
