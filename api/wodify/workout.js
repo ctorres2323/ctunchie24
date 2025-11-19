@@ -11,6 +11,7 @@ export default async function handler(req, res) {
     const LOCATION = "Neighborhood Gym";
     const PROGRAM = "NBHD METCON";
 
+    // Build today as YYYY-MM-DD (Wodify format)
     const today = new Date();
     const date = [
       today.getFullYear(),
@@ -33,10 +34,10 @@ export default async function handler(req, res) {
 
     const raw = await response.text();
 
-    // Try to parse JSON; if it isn't JSON, show a preview so we can debug
-    let parsed;
+    // Try to parse JSON from Wodify
+    let wod;
     try {
-      parsed = JSON.parse(raw);
+      wod = JSON.parse(raw);
     } catch (e) {
       return res.status(500).json({
         error: "Wodify did not return JSON",
@@ -44,13 +45,73 @@ export default async function handler(req, res) {
       });
     }
 
-    // If we actually get JSON, return it
-    return res.status(200).json({
+    // Some installs may have wrapped data; handle both shapes
+    const wodData = wod.data || wod || {};
+    const components = Array.isArray(wodData.Components)
+      ? wodData.Components
+      : [];
+
+    const stripHtml = (html = "") =>
+      html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+    // Try to find logical sections
+    const strengthComp =
+      components.find(
+        (c) =>
+          c.ComponentTypeName === "Weightlifting" ||
+          /strength/i.test(c.Name || "")
+      ) || null;
+
+    const metconComp =
+      components.find(
+        (c) =>
+          c.ComponentTypeName === "Metcon" &&
+          !(strengthComp && c === strengthComp)
+      ) || null;
+
+    const extras = components.filter(
+      (c) => c !== strengthComp && c !== metconComp
+    );
+
+    const coachNotes =
+      typeof wodData.CoachNotes === "string" &&
+      wodData.CoachNotes.trim().length
+        ? wodData.CoachNotes.trim()
+        : null;
+
+    const result = {
       date,
       location: LOCATION,
       program: PROGRAM,
-      data: parsed,
-    });
+      title: wodData.Name || null,
+
+      strength: strengthComp
+        ? {
+            name: strengthComp.Name || "Strength",
+            html: strengthComp.Description || "",
+            text: stripHtml(strengthComp.Description || ""),
+          }
+        : null,
+
+      metcon: metconComp
+        ? {
+            name: metconComp.Name || "Metcon",
+            html: metconComp.Description || "",
+            text: stripHtml(metconComp.Description || ""),
+          }
+        : null,
+
+      extras: extras.map((c) => ({
+        type: c.ComponentTypeName || null,
+        name: c.Name || null,
+        html: c.Description || "",
+        text: stripHtml(c.Description || ""),
+      })),
+
+      coach_notes: coachNotes,
+    };
+
+    return res.status(200).json(result);
   } catch (e) {
     return res.status(500).json({
       error: "Proxy error",
