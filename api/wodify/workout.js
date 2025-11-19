@@ -7,9 +7,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing Wodify API key" });
     }
 
-    // TODO: update these to match your exact Wodify values
-    const LOCATION = "YOUR_LOCATION_NAME"; // e.g. "Neighborhood Gym"
-    const PROGRAM = "YOUR_PROGRAM_NAME";   // e.g. "CrossFit" or "MetCon"
+    // Exact names from your Wodify account
+    const LOCATION = "Neighborhood Gym";
+    const PROGRAM = "NBHD METCON";
 
     const today = new Date();
     const date = [
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     const raw = await response.text();
 
-    // Try to parse JSON, but don't crash if it fails
+    // Try to parse JSON; if it isn't JSON, show a preview so we can debug
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // If we actually get JSON, return it so we can inspect and use it
+    // If we actually get JSON, return it
     return res.status(200).json({
       date,
       location: LOCATION,
