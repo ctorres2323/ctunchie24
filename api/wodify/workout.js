@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  // 1. ALLOW CORS (Crucial for Shopify to read this)
+  // 1. ALLOW CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -8,7 +8,6 @@ export default async function handler(req, res) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
-  // Handle Pre-flight
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -19,18 +18,19 @@ export default async function handler(req, res) {
     // 2. CONFIGURATION
     // ==================================================
     
-    // *** PASTE YOUR REAL WODIFY API KEY BELOW ***
-    const WODIFY_API_KEY = 'PASTE_YOUR_KEY_HERE'; 
+    // ✅ FIXED: API Key is now a proper string here
+    const WODIFY_API_KEY = 'b7TZjvVAv78lKNS9mKzmH4mZ2cAOhHAranrLCNxS'; 
     
-    // Date Setup (Defaults to today)
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    // Ensure we get the date in YYYY-MM-DD format based on local time or UTC as needed
+    // (Using simple ISO split for now)
+    const dateStr = today.toISOString().split('T')[0]; 
 
     // ==================================================
     // 3. FETCH FROM WODIFY
     // ==================================================
-    // We use type=json to get the raw data
-    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${b7TZjvVAv78lKNS9mKzmH4mZ2cAOhHAranrLCNxS}&date=${dateStr}&type=json`;
+    // ✅ FIXED: Now it correctly references the variable above
+    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${dateStr}&type=json`;
     
     const response = await fetch(wodifyUrl);
     
@@ -44,11 +44,9 @@ export default async function handler(req, res) {
     // 4. PARSE & CLEAN DATA
     // ==================================================
     
-    // Check if any WOD exists in the response
     const wodList = rawData.RecordList?.APIWod;
     
     if (!wodList || wodList.length === 0) {
-      // Return a "Rest Day" state if nothing is found
       return res.status(200).json({
         status: "rest_day",
         date: dateStr,
@@ -59,7 +57,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Select the first program (Usually your main WOD)
+    // Select the first program
     const mainWod = wodList[0]; 
     const components = mainWod.Components?.Component || [];
 
