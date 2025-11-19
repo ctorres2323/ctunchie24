@@ -45,10 +45,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // Some installs may have wrapped data; handle both shapes
-    const wodData = wod.data || wod || {};
-    const components = Array.isArray(wodData.Components)
-      ? wodData.Components
+    // ─────────────────────────────────────────────────────────────
+    // Normalize into a single "workout" object
+    // Wodify often returns { data: [ { ...workout... } ] }
+    // ─────────────────────────────────────────────────────────────
+    const root = wod.data ?? wod;
+    const list = Array.isArray(root) ? root : [root];
+    const wodObj = list[0] || {};
+
+    const components = Array.isArray(wodObj.Components)
+      ? wodObj.Components
       : [];
 
     const stripHtml = (html = "") =>
@@ -74,16 +80,16 @@ export default async function handler(req, res) {
     );
 
     const coachNotes =
-      typeof wodData.CoachNotes === "string" &&
-      wodData.CoachNotes.trim().length
-        ? wodData.CoachNotes.trim()
+      typeof wodObj.CoachNotes === "string" &&
+      wodObj.CoachNotes.trim().length
+        ? wodObj.CoachNotes.trim()
         : null;
 
     const result = {
       date,
       location: LOCATION,
       program: PROGRAM,
-      title: wodData.Name || null,
+      title: wodObj.Name || null,
 
       strength: strengthComp
         ? {
