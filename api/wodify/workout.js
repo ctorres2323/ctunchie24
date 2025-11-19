@@ -18,32 +18,45 @@ export default async function handler(req, res) {
     // 2. CONFIGURATION
     // ==================================================
     
-    // ✅ FIXED: API Key is now a proper string here
     const WODIFY_API_KEY = 'b7TZjvVAv78lKNS9mKzmH4mZ2cAOhHAranrLCNxS'; 
     
-    const today = new Date();
-    // Ensure we get the date in YYYY-MM-DD format based on local time or UTC as needed
-    // (Using simple ISO split for now)
-    const dateStr = today.toISOString().split('T')[0]; 
+    // We try the standard name first. 
+    // If this still fails, we will try "Neighborhood Gym OC" next.
+    const LOCATION_NAME = 'Neighborhood Gym'; 
 
     // ==================================================
-    // 3. FETCH FROM WODIFY
+    // 3. DATE HANDLING (FORCE CALIFORNIA TIME)
     // ==================================================
-    // ✅ FIXED: Now it correctly references the variable above
-    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${dateStr}&type=json`;
+    // This fixes the "404" error caused by the server thinking it's tomorrow
+    const date = new Date().toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    // Convert MM/DD/YYYY to YYYY-MM-DD
+    const [month, day, year] = date.split('/');
+    const dateStr = `${year}-${month}-${day}`;
+
+    // ==================================================
+    // 4. FETCH FROM WODIFY
+    // ==================================================
+    const encodedLocation = encodeURIComponent(LOCATION_NAME);
+    const wodifyUrl = `https://app.wodify.com/API/WODs_v1.aspx?apiKey=${WODIFY_API_KEY}&date=${dateStr}&location=${encodedLocation}&type=json`;
     
     const response = await fetch(wodifyUrl);
     
     if (!response.ok) {
-      throw new Error(`Wodify API returned status: ${response.status}`);
+      // Detailed error to help us debug if "Neighborhood Gym" is the wrong name
+      throw new Error(`Wodify 404. Tried fetching for date: ${dateStr} at Location: ${LOCATION_NAME}`);
     }
 
     const rawData = await response.json();
 
     // ==================================================
-    // 4. PARSE & CLEAN DATA
+    // 5. PARSE DATA
     // ==================================================
-    
     const wodList = rawData.RecordList?.APIWod;
     
     if (!wodList || wodList.length === 0) {
@@ -57,10 +70,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Select the first program
     const mainWod = wodList[0]; 
     const components = mainWod.Components?.Component || [];
-
     const strengthComp = components[0] || {};
     const metconComp = components[1] || {};
 
@@ -81,9 +92,6 @@ export default async function handler(req, res) {
       }
     };
 
-    // ==================================================
-    // 5. SEND TO SHOPIFY
-    // ==================================================
     res.status(200).json(cleanData);
 
   } catch (error) {
